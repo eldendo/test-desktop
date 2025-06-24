@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuele Desktop</title>
+    <!-- Tailwind CSS CDN voor eenvoudige styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Aangepaste scrollbar voor een desktop-achtig gevoel */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f0f0f0;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Voorkom scrollen van de hele pagina */
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f0f0; /* Standaard desktop achtergrondkleur */
+        }
+
+        /* Desktop container die het hele scherm vult */
+        #desktop-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative; /* Belangrijk voor absolute positionering van vensters */
+            background-image: url('https://placehold.co/1920x1080/4F6F52/FFFFFF?text=Achtergrond'); /* Optionele achtergrondafbeelding */
+            background-size: cover;
+            background-position: center;
+        }
+
+        /* Stijl voor vensters */
+        .window {
+            position: absolute;
+            border: 1px solid #a0a0a0;
+            background-color: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            min-width: 280px; /* Kleinere minimale breedte */
+            min-height: 200px; /* Kleinere minimale hoogte */
+            overflow: hidden; /* Verberg overlopende inhoud */
+            border-radius: 8px; /* Afgeronde hoeken */
+            display: flex;
+            flex-direction: column;
+            resize: both; /* Maakt native resizen mogelijk */
+            user-select: none; /* Voorkom tekstselectie tijdens slepen */
+            transition: top 0.2s ease-out, left 0.2s ease-out, width 0.2s ease-out, height 0.2s ease-out; /* Gladde overgang voor maximaliseren/minimaliseren */
+            z-index: 1000; /* Standaard z-index voor vensters, moet lager zijn dan de taakbalk */
+        }
+
+        .window-header {
+            background-color: #e0e0e0;
+            padding: 8px 12px;
+            cursor: grab; /* Cursor om aan te geven dat het gesleept kan worden */
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #d0d0d0;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+        }
+
+        .window-header.grabbing {
+            cursor: grabbing; /* Cursor terwijl gesleept wordt */
+        }
+
+        .window-title {
+            font-weight: bold;
+            color: #333;
+            font-size: 0.95rem;
+            flex-grow: 1; /* Neemt beschikbare ruimte in */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 4px; /* Ruimte tussen knoppen */
+        }
+
+        .window-controls button {
+            background-color: #f0f0f0;
+            border: 1px solid #c0c0c0;
+            border-radius: 4px;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1rem;
+            color: #555;
+            cursor: pointer;
+            transition: background-color 0.2s, border-color 0.2s;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .window-controls button:hover {
+            background-color: #e5e5e5;
+            border-color: #b0b0b0;
+        }
+        .window-controls button.close-btn:hover {
+            background-color: #e74c3c; /* Rood voor sluiten */
+            color: white;
+            border-color: #c0392b;
+        }
+        .window-controls button.minimize-btn:hover {
+            background-color: #3498db; /* Blauw voor minimaliseren */
+            color: white;
+            border-color: #2980b9;
+        }
+        .window-controls button.maximize-btn:hover {
+            background-color: #2ecc71; /* Groen voor maximaliseren */
+            color: white;
+            border-color: #27ae60;
+        }
+
+        .window-content {
+            flex-grow: 1; /* Vult de rest van de ruimte van het venster */
+            padding: 12px;
+            overflow: auto; /* Scrollen binnen de inhoud van het venster */
+            box-sizing: border-box; /* Padding meerekenen in hoogte */
+        }
+
+        /* Specifieke content stijlen */
+        #editor-content textarea {
+            width: 100%;
+            height: 100%;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 8px;
+            font-family: 'monospace';
+            font-size: 0.9rem;
+            resize: none; /* Voorkom resizen van de textarea zelf */
+        }
+
+        #cli-output {
+            background-color: #1a1a1a;
+            color: #00ff00;
+            font-family: 'monospace';
+            font-size: 0.85rem;
+            height: calc(100% - 40px); /* Ruimte voor input */
+            overflow-y: auto;
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            white-space: pre-wrap; /* Behoudt witruimte en regels */
+        }
+        #cli-input {
+            width: 100%;
+            background-color: #000;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            border-radius: 4px;
+            padding: 6px;
+            font-family: 'monospace';
+            font-size: 0.85rem;
+            outline: none;
+        }
+
+        #mandelbrot-canvas {
+            display: block; /* Verwijder extra ruimte onder de canvas */
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        /* Taskbar stijlen */
+        #taskbar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 48px; /* Hogere taakbalk */
+            background-color: rgba(30, 30, 30, 0.9); /* Licht transparant */
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            box-sizing: border-box;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            justify-content: flex-start; /* Icons naar links */
+            gap: 10px; /* Ruimte tussen taakbalk items */
+            z-index: 9999; /* Zeer hoge z-index om altijd bovenaan te staan */
+        }
+
+        .taskbar-item {
+            background-color: rgba(255, 255, 255, 0.15);
+            padding: 6px 12px;
+            border-radius: 6px;
+            color: white;
+            font-size: 0.9rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        .taskbar-item:hover {
+            background-color: rgba(255, 255, 255, 0.25);
+            transform: translateY(-2px); /* Lichte animatie bij hover */
+        }
+        .taskbar-item.active {
+            background-color: rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+        }
+
+        .taskbar-item i {
+            font-size: 1.1rem;
+        }
+
+        #fullscreen-button {
+            margin-left: auto; /* Druk de knop naar de rechterkant */
+            background-color: rgba(60, 60, 60, 0.7);
+            padding: 8px 15px;
+            border-radius: 6px;
+            color: white;
+            font-size: 0.9rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background-color 0.2s;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        #fullscreen-button:hover {
+            background-color: rgba(90, 90, 90, 0.8);
+        }
+
+
+        /* Voor mobiele apparaten: Maak vensters initieel kleiner en centreer ze */
+        @media (max-width: 768px) {
+            .window {
+                width: 95vw !important;
+                height: 80vh !important;
+                top: 5vh !important;
+                left: 2.5vw !important;
+                transform: none !important; /* Verwijder eventuele transformaties van desktop */
+                margin: auto; /* Centreer vensters */
+            }
+
+            .taskbar-item {
+                padding: 6px 8px;
+                font-size: 0.8rem;
+                gap: 4px;
+            }
+
+            #fullscreen-button {
+                padding: 6px 10px;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="desktop-container" class="relative w-screen h-screen">
+        <!-- De taakbalk -->
+        <div id="taskbar" class="flex items-center px-4 bg-gray-800 text-white shadow-lg z-50">
+            <!-- Geminimaliseerde venster iconen komen hier -->
+            <!-- Fullscreen knop -->
+            <button id="fullscreen-button" title="Open in fullscreen">
+                <i class="fas fa-expand"></i>
+                <span class="hidden md:inline">Fullscreen</span>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Functie om de __app_id en __firebase_config variabelen te initialiseren, als ze bestaan.
+        // Dit is essentieel voor compatibiliteit binnen de Canvas-omgeving.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+
+        // Hoofdcontainer voor de desktopomgeving
+        const desktopContainer = document.getElementById('desktop-container');
+        // De taakbalk container
+        const taskbar = document.getElementById('taskbar');
+        // De fullscreen knop
+        const fullscreenButton = document.getElementById('fullscreen-button');
+
+        // Houd bij welke het hoogste z-index heeft
+        let highestZIndex = 1000;
+
+        /**
+         * Klasse om een venster te beheren.
+         * Een venster kan gesleept, verkleind/vergroot, geminimaliseerd/gemaximaliseerd en gesloten worden.
+         */
+        class Window {
+            constructor(id, title, contentHTML, initialX, initialY, initialWidth, initialHeight, iconClass) {
+                this.id = id;
+                this.title = title;
+                this.iconClass = iconClass; // Font Awesome icoon klasse
+                this.element = this.createWindowElement(contentHTML);
+                this.header = this.element.querySelector('.window-header');
+                this.minimizeBtn = this.element.querySelector('.minimize-btn');
+                this.maximizeBtn = this.element.querySelector('.maximize-btn');
+                this.closeBtn = this.element.querySelector('.close-btn');
+                this.taskbarItem = this.createTaskbarItem();
+
+                this.isDragging = false;
+                this.isMaximized = false;
+                this.isMinimized = false;
+                this.originalState = { x: initialX, y: initialY, width: initialWidth, height: initialHeight };
+
+                this.setupEventListeners();
+                this.setPositionAndSize(initialX, initialY, initialWidth, initialHeight);
+                this.bringToFront(); // Breng nieuw venster naar voren
+            }
+
+            /**
+             * Maakt de HTML-structuur voor een venster aan.
+             * @param {string} contentHTML - De HTML-inhoud voor het venster.
+             * @returns {HTMLElement} Het aangemaakte venster element.
+             */
+            createWindowElement(contentHTML) {
+                const windowDiv = document.createElement('div');
+                windowDiv.id = this.id;
+                windowDiv.className = 'window rounded-lg flex flex-col overflow-hidden shadow-xl';
+                windowDiv.innerHTML = `
+                    <div class="window-header flex items-center justify-between p-2 cursor-grab bg-gray-200 border-b border-gray-300 rounded-t-lg">
+                        <span class="window-title font-bold text-gray-800 text-sm flex-grow truncate"><i class="${this.iconClass} mr-2"></i>${this.title}</span>
+                        <div class="window-controls flex gap-1">
+                            <button class="minimize-btn w-7 h-7 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-md text-gray-600 text-sm hover:bg-blue-200 hover:text-blue-700 transition-colors duration-200" title="Minimaliseer"><i class="fas fa-window-minimize"></i></button>
+                            <button class="maximize-btn w-7 h-7 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-md text-gray-600 text-sm hover:bg-green-200 hover:text-green-700 transition-colors duration-200" title="Maximaliseer/Herstel"><i class="far fa-square"></i></button>
+                            <button class="close-btn w-7 h-7 flex items-center justify-center bg-red-100 border border-red-300 rounded-md text-red-600 text-sm hover:bg-red-200 hover:text-red-700 transition-colors duration-200" title="Sluit"><i class="fas fa-times"></i></button>
+                        </div>
+                    </div>
+                    <div class="window-content flex-grow p-3 overflow-auto">
+                        ${contentHTML}
+                    </div>
+                `;
+                desktopContainer.appendChild(windowDiv);
+                return windowDiv;
+            }
+
+            /**
+             * Maakt een item aan voor de taakbalk.
+             * @returns {HTMLElement} Het aangemaakte taakbalk item.
+             */
+            createTaskbarItem() {
+                const taskbarItem = document.createElement('div');
+                taskbarItem.className = 'taskbar-item px-3 py-1 bg-gray-700 rounded-md text-white text-sm flex items-center gap-2 cursor-pointer hover:bg-gray-600 transition-colors duration-200';
+                taskbarItem.innerHTML = `<i class="${this.iconClass}"></i><span>${this.title}</span>`;
+                taskbarItem.onclick = () => this.toggleMinimize();
+                taskbar.insertBefore(taskbarItem, fullscreenButton); // Voeg toe vóór de fullscreen knop
+                return taskbarItem;
+            }
+
+            /** Stelt de positie en grootte van het venster in. */
+            setPositionAndSize(x, y, width, height) {
+                this.element.style.left = `${x}px`;
+                this.element.style.top = `${y}px`;
+                this.element.style.width = `${width}px`;
+                this.element.style.height = `${height}px`;
+            }
+
+            /** Haalt de huidige dimensies en positie van het venster op. */
+            getCurrentRect() {
+                const rect = this.element.getBoundingClientRect();
+                return {
+                    x: rect.left,
+                    y: rect.top,
+                    width: rect.width,
+                    height: rect.height
+                };
+            }
+
+            /**
+             * Brengt het venster naar de voorgrond door de z-index aan te passen.
+             */
+            bringToFront() {
+                highestZIndex++;
+                this.element.style.zIndex = highestZIndex;
+                // Verwijder 'active' van alle andere taakbalk-items
+                document.querySelectorAll('.taskbar-item').forEach(item => item.classList.remove('active'));
+                // Voeg 'active' toe aan het huidige taakbalk-item
+                this.taskbarItem.classList.add('active');
+            }
+
+            /**
+             * Initialiseert event listeners voor slepen, resizen en knoppen.
+             */
+            setupEventListeners() {
+                // Event listeners voor slepen (header)
+                let offsetX, offsetY;
+                this.header.addEventListener('mousedown', (e) => {
+                    if (this.isMaximized || this.isMinimized) return; // Kan niet slepen als gemaximaliseerd of geminimaliseerd
+                    this.isDragging = true;
+                    this.header.classList.add('grabbing');
+                    offsetX = e.clientX - this.element.offsetLeft;
+                    offsetY = e.clientY - this.element.offsetTop;
+                    this.bringToFront(); // Breng venster naar voren bij start slepen
+                });
+
+                document.addEventListener('mousemove', (e) => {
+                    if (!this.isDragging) return;
+                    let newX = e.clientX - offsetX;
+                    let newY = e.clientY - offsetY;
+
+                    // Beperk slepen tot binnen de desktop container
+                    const desktopRect = desktopContainer.getBoundingClientRect();
+                    newX = Math.max(0, Math.min(newX, desktopRect.width - this.element.offsetWidth));
+                    newY = Math.max(0, Math.min(newY, desktopRect.height - this.element.offsetHeight - taskbar.offsetHeight)); // Houd rekening met taakbalk
+
+                    this.element.style.left = `${newX}px`;
+                    this.element.style.top = `${newY}px`;
+                });
+
+                document.addEventListener('mouseup', () => {
+                    this.isDragging = false;
+                    this.header.classList.remove('grabbing');
+                });
+
+                // Event listener voor klikken op het venster om het naar voren te brengen
+                this.element.addEventListener('mousedown', () => {
+                    this.bringToFront();
+                });
+
+                // Knoppen functionaliteit
+                this.minimizeBtn.addEventListener('click', () => this.toggleMinimize());
+                this.maximizeBtn.addEventListener('click', () => this.toggleMaximize());
+                this.closeBtn.addEventListener('click', () => this.close());
+            }
+
+            /**
+             * Toggle minimaliseren/herstellen van het venster.
+             */
+            toggleMinimize() {
+                if (this.isMinimized) {
+                    // Herstel van geminimaliseerd
+                    this.element.style.display = 'flex'; // Zichtbaar maken
+                    this.isMinimized = false;
+                    this.bringToFront(); // Breng naar voren bij herstel
+                    this.taskbarItem.classList.add('active'); // Maak actief in taakbalk
+                    if (this.isMaximized) {
+                        // Als het venster gemaximaliseerd was voor het minimaliseren, herstel naar gemaximaliseerde staat
+                        this.toggleMaximize(); // Call toggleMaximize om de gemaximaliseerde staat te herstellen
+                    } else {
+                        // Herstel naar originele positie en grootte
+                        this.setPositionAndSize(this.originalState.x, this.originalState.y, this.originalState.width, this.originalState.height);
+                    }
+                    this.element.style.opacity = '1';
+                    this.element.style.transform = 'scale(1)';
+                } else {
+                    // Minimaliseer
+                    this.isMinimized = true;
+                    this.taskbarItem.classList.remove('active'); // Maak inactief in taakbalk
+                    // Sla de huidige staat op voordat we minimaliseren
+                    if (!this.isMaximized) { // Sla alleen op als het niet gemaximaliseerd is
+                        this.originalState = this.getCurrentRect();
+                    }
+                    // Animatie naar beneden en verdwijnen
+                    this.element.style.transformOrigin = 'bottom left';
+                    this.element.style.transition = 'all 0.3s ease-out';
+                    this.element.style.opacity = '0';
+                    this.element.style.transform = 'scale(0.2)';
+                    // Verberg element na animatie
+                    setTimeout(() => {
+                        this.element.style.display = 'none';
+                    }, 300); // Wacht tot animatie klaar is
+                }
+            }
+
+            /**
+             * Toggle maximaliseren/herstellen van het venster.
+             */
+            toggleMaximize() {
+                if (this.isMinimized) {
+                    // Als geminimaliseerd, herstel eerst
+                    this.toggleMinimize();
+                    // En daarna pas maximaliseren na een korte vertraging, zodat de transitie zichtbaar is
+                    setTimeout(() => this.toggleMaximize(), 350);
+                    return;
+                }
+
+                if (this.isMaximized) {
+                    // Herstel van gemaximaliseerd
+                    this.setPositionAndSize(this.originalState.x, this.originalState.y, this.originalState.width, this.originalState.height);
+                    this.isMaximized = false;
+                    this.maximizeBtn.innerHTML = '<i class="far fa-square"></i>'; // Icon voor maximaliseren
+                    this.element.style.resize = 'both'; // Resizen weer inschakelen
+                } else {
+                    // Maximaliseer
+                    // Sla de huidige staat op voor herstel
+                    this.originalState = this.getCurrentRect();
+                    const desktopRect = desktopContainer.getBoundingClientRect();
+                    const taskbarHeight = taskbar.offsetHeight;
+
+                    this.setPositionAndSize(
+                        0,
+                        0,
+                        desktopRect.width,
+                        desktopRect.height - taskbarHeight
+                    );
+                    this.isMaximized = true;
+                    this.maximizeBtn.innerHTML = '<i class="fas fa-compress-alt"></i>'; // Icon voor herstellen
+                    this.element.style.resize = 'none'; // Resizen uitschakelen wanneer gemaximaliseerd
+                    this.bringToFront(); // Breng naar voren bij maximaliseren
+                }
+            }
+
+            /**
+             * Sluit het venster permanent.
+             */
+            close() {
+                this.element.remove(); // Verwijder venster uit DOM
+                this.taskbarItem.remove(); // Verwijder item uit taakbalk
+                // Optioneel: Ruim event listeners op als ze handmatig zijn toegevoegd
+            }
+        }
+
+        // --- Mandelbrot Tekenen Functie ---
+        /**
+         * Tekent de Mandelbrot fractal op een canvas.
+         * @param {HTMLCanvasElement} canvas - Het canvas element.
+         * @param {number} maxIterations - Maximaal aantal iteraties voor convergentie.
+         * @param {number} zoom - Zoomfactor.
+         * @param {number} offsetX - Verschuiving in de X-richting.
+         * @param {number} offsetY - Verschuiving in de Y-richting.
+         */
+        function drawMandelbrot(canvas, maxIterations = 100, zoom = 200, offsetX = -0.5, offsetY = 0) {
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+
+            // Verbeterde resolutie voor een scherper beeld
+            const imageData = ctx.createImageData(width, height);
+            const pixels = imageData.data;
+
+            // Kleurenpalet (eenvoudig voorbeeld)
+            const getColor = (i) => {
+                if (i === maxIterations) return [0, 0, 0, 255]; // Zwart voor binnen de set
+                const hue = (i * 360 / maxIterations) % 360;
+                // Converteer HSL naar RGB (voor eenvoud is een vaste S en L gebruikt)
+                const c = 1; // Chroma
+                const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+                const m = 0.5; // Lightness adjusted (L - 0.5 * C)
+
+                let r = 0, g = 0, b = 0;
+                if (0 <= hue && hue < 60) {
+                    r = c; g = x; b = 0;
+                } else if (60 <= hue && hue < 120) {
+                    r = x; g = c; b = 0;
+                } else if (120 <= hue && hue < 180) {
+                    r = 0; g = c; b = x;
+                } else if (180 <= hue && hue < 240) {
+                    r = 0; g = x; b = c;
+                } else if (240 <= hue && hue < 300) {
+                    r = x; g = 0; b = c;
+                } else if (300 <= hue && hue < 360) {
+                    r = c; g = 0; b = x;
+                }
+
+                r = Math.floor((r + m) * 255);
+                g = Math.floor((g + m) * 255);
+                b = Math.floor((b + m) * 255);
+
+                return [r, g, b, 255];
+            };
+
+
+            for (let x = 0; x < width; x++) {
+                for (let y = 0; y < height; y++) {
+                    let a = (x - width / 2) / zoom + offsetX;
+                    let b = (y - height / 2) / zoom + offsetY;
+                    let ca = a;
+                    let cb = b;
+
+                    let n = 0;
+                    for (; n < maxIterations; n++) {
+                        let aa = a * a - b * b;
+                        let bb = 2 * a * b;
+                        a = aa + ca;
+                        b = bb + cb;
+                        if (a * a + b * b > 4) {
+                            break;
+                        }
+                    }
+
+                    const index = (x + y * width) * 4;
+                    const color = getColor(n);
+                    pixels[index + 0] = color[0]; // R
+                    pixels[index + 1] = color[1]; // G
+                    pixels[index + 2] = color[2]; // B
+                    pixels[index + 3] = color[3]; // A
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        // --- Initialiseer Vensters ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Vraag de browser om naar de fullscreen modus te gaan.
+            const requestFullscreen = () => {
+                const elem = document.documentElement; // Het hele HTML-document
+                if (elem.requestFullscreen) {
+                    elem.requestFullscreen();
+                } else if (elem.webkitRequestFullscreen) { /* Safari */
+                    elem.webkitRequestFullscreen();
+                } else if (elem.msRequestFullscreen) { /* IE11 */
+                    elem.msRequestFullscreen();
+                }
+            };
+
+            // Koppel de fullscreen functie aan de knop
+            fullscreenButton.addEventListener('click', requestFullscreen);
+
+            // Editor Venster
+            const editorWindow = new Window(
+                'editor-window',
+                'Tekst Editor',
+                '<textarea id="editor-content" class="w-full h-full p-2 border rounded-md" placeholder="Begin hier met typen..."></textarea>',
+                50, 50, 600, 400,
+                'fas fa-edit'
+            );
+
+            // Command Line Interface Venster
+            const cliWindow = new Window(
+                'cli-window',
+                'Command Line Interface',
+                `
+                <div id="cli-output" class="flex-grow bg-black text-green-400 p-2 overflow-y-auto rounded-md mb-2 text-sm font-mono">Welkom bij de Command Line Interface. Typ 'help' voor beschikbare commando's.</div>
+                <input type="text" id="cli-input" class="w-full bg-gray-900 text-green-400 border border-green-500 rounded-md p-2 text-sm font-mono" placeholder="Typ commando en druk op Enter...">
+                `,
+                150, 100, 700, 500,
+                'fas fa-terminal'
+            );
+
+            // Mandelbrot Venster
+            const mandelbrotWindow = new Window(
+                'mandelbrot-window',
+                'Mandelbrot Fractal',
+                `<canvas id="mandelbrot-canvas" class="block w-full h-auto border border-gray-300 rounded-md bg-black"></canvas>
+                 <div class="flex flex-col md:flex-row gap-2 mt-2">
+                    <input type="range" id="mandelbrot-zoom" min="50" max="1000" value="200" class="flex-grow-0 md:flex-grow w-full md:w-auto">
+                    <input type="range" id="mandelbrot-iter" min="20" max="250" value="100" class="flex-grow-0 md:flex-grow w-full md:w-auto">
+                    <button id="mandelbrot-redraw" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors">Tekenen</button>
+                 </div>`,
+                250, 150, 800, 600,
+                'fas fa-brain'
+            );
+
+            // --- CLI Functionaliteit ---
+            const cliOutput = document.getElementById('cli-output');
+            const cliInput = document.getElementById('cli-input');
+
+            cliInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    const command = cliInput.value.trim();
+                    cliInput.value = '';
+                    appendCliOutput(`> ${command}\n`);
+                    processCommand(command);
+                }
+            });
+
+            function appendCliOutput(text) {
+                cliOutput.textContent += text;
+                cliOutput.scrollTop = cliOutput.scrollHeight; // Scroll naar de onderkant
+            }
+
+            function processCommand(command) {
+                switch (command.toLowerCase()) {
+                    case 'help':
+                        appendCliOutput('Beschikbare commando\'s:\n');
+                        appendCliOutput('  help - Toont deze helptekst\n');
+                        appendCliOutput('  echo [tekst] - Herhaalt de ingevoerde tekst\n');
+                        appendCliOutput('  clear - Maakt het scherm leeg\n');
+                        appendCliOutput('  date - Toont de huidige datum en tijd\n');
+                        break;
+                    case 'clear':
+                        cliOutput.textContent = 'Welkom bij de Command Line Interface. Typ \'help\' voor beschikbare commando\'s.\n';
+                        break;
+                    case 'date':
+                        appendCliOutput(`Huidige datum en tijd: ${new Date().toLocaleString()}\n`);
+                        break;
+                    default:
+                        if (command.startsWith('echo ')) {
+                            appendCliOutput(`${command.substring(5)}\n`);
+                        } else {
+                            appendCliOutput(`Commando '${command}' niet herkend.\n`);
+                        }
+                        break;
+                }
+            }
+
+            // --- Mandelbrot Functionaliteit ---
+            const mandelbrotCanvas = document.getElementById('mandelbrot-canvas');
+            const mandelbrotZoomSlider = document.getElementById('mandelbrot-zoom');
+            const mandelbrotIterSlider = document.getElementById('mandelbrot-iter');
+            const mandelbrotRedrawBtn = document.getElementById('mandelbrot-redraw');
+
+            let currentZoom = parseFloat(mandelbrotZoomSlider.value);
+            let currentIterations = parseInt(mandelbrotIterSlider.value);
+            let currentOffsetX = -0.5;
+            let currentOffsetY = 0;
+
+            // Zorg ervoor dat de canvas de juiste grootte heeft bij het initialiseren en bij het resizen van het venster
+            const resizeMandelbrotCanvas = () => {
+                // Gebruik de actuele clientWidth en clientHeight van de ouder (window-content)
+                const parent = mandelbrotCanvas.parentElement;
+                mandelbrotCanvas.width = parent.clientWidth - 24; // Min de padding van window-content (12px aan elke kant)
+                mandelbrotCanvas.height = Math.floor(mandelbrotCanvas.width * (2/3)); // Behoud een aspect ratio, bijv. 3:2
+                drawMandelbrot(mandelbrotCanvas, currentIterations, currentZoom, currentOffsetX, currentOffsetY);
+            };
+
+            // Initial tekenen en resizen
+            resizeMandelbrotCanvas();
+            // Voeg een resize observer toe aan het Mandelbrot venster-content om canvas aan te passen
+            new ResizeObserver(resizeMandelbrotCanvas).observe(mandelbrotWindow.element.querySelector('.window-content'));
+
+            mandelbrotRedrawBtn.addEventListener('click', () => {
+                currentZoom = parseFloat(mandelbrotZoomSlider.value);
+                currentIterations = parseInt(mandelbrotIterSlider.value);
+                drawMandelbrot(mandelbrotCanvas, currentIterations, currentZoom, currentOffsetX, currentOffsetY);
+            });
+
+            // Pan functionaliteit voor Mandelbrot canvas (experimenteel)
+            let isMandelbrotDragging = false;
+            let lastMouseX, lastMouseY;
+
+            mandelbrotCanvas.addEventListener('mousedown', (e) => {
+                isMandelbrotDragging = true;
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+                mandelbrotCanvas.style.cursor = 'grabbing';
+            });
+
+            mandelbrotCanvas.addEventListener('mousemove', (e) => {
+                if (!isMandelbrotDragging) return;
+
+                const deltaX = (e.clientX - lastMouseX) / currentZoom;
+                const deltaY = (e.clientY - lastMouseY) / currentZoom;
+
+                currentOffsetX -= deltaX;
+                currentOffsetY -= deltaY;
+
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+
+                drawMandelbrot(mandelbrotCanvas, currentIterations, currentZoom, currentOffsetX, currentOffsetY);
+            });
+
+            mandelbrotCanvas.addEventListener('mouseup', () => {
+                isMandelbrotDragging = false;
+                mandelbrotCanvas.style.cursor = 'grab';
+            });
+            mandelbrotCanvas.style.cursor = 'grab'; // Standaard cursor
+        });
+    </script>
+</body>
+</html>
